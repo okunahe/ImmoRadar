@@ -6,8 +6,6 @@ from urllib.parse import urljoin
 from analyzer import calculate_price_per_sqm
 import requests
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-
 
 BASE_URL = "https://www.kleinanzeigen.de"
 
@@ -102,101 +100,56 @@ def search_listings(
     print("\nSuche:", url)
     print("URL exakt:", repr(url))
     # -----------------------------------
-    # 1. Suchergebnisse mit Playwright
+    # 1. Suchergebnisse mit BeautifulSoup
     # -----------------------------------
 
     anzeige_links = []
     bekannte_links = set()
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            channel="chrome",
-            headless=False,
+    try:
+        response = requests.get(
+            url,
+            headers=HEADERS,
+            timeout=30,
         )
 
-        try:
-            page = browser.new_page(
-                viewport={
-                    "width": 1440,
-                    "height": 900,
-                }
-            )
+        response.raise_for_status()
 
-            page.goto(
-                url,
-                wait_until="domcontentloaded",
-                timeout=30000,
-            )
-            print("Seitentitel:", page.title())
-            print(
-                "Suchergebnisse-Überschrift:",
-                page.locator("h1").first.inner_text()
-            )
-            print(
-                "Erster Artikel:",
-                page.locator(
-                    "#srchrslt-results article[data-href]"
-                ).first.inner_text()[:350]
-            )
+    except requests.RequestException as error:
+        print("Suchseite konnte nicht geladen werden:", error)
+        return []
 
-            print("Browser-URL:", page.url)
+    soup = BeautifulSoup(
+        response.text,
+        "html.parser",
+    )
 
-            try:
-                page.wait_for_selector(
-                    "#srchrslt-results article[data-href]",
-                    timeout=15000,
-                )
-            except PlaywrightTimeoutError:
-                print(
-                    "Keine Anzeigen im Ergebnisbereich gefunden."
-                )
-                return []
+    print("HTTP-Status:", response.status_code)
 
-            # Nur Artikel aus der eigentlichen Ergebnisliste
-            cards = page.locator(
-                "#srchrslt-results article[data-href]"
-            )
+    cards = soup.select(
+        "#srchrslt-results article[data-href]"
+    )
 
-            print(
-                "Artikel im Ergebnisbereich:",
-                cards.count(),
-            )
+    print("Artikel im Ergebnisbereich:", len(cards))
 
-            # Links in der Reihenfolge der Suchseite sammeln
-            for i in range(cards.count()):
-                article = cards.nth(i)
+    for article in cards:
+        href = article.get("data-href")
 
-                href = article.get_attribute(
-                    "data-href"
-                )
+        if not href or "/s-anzeige/" not in href:
+            continue
 
-                if not href:
-                    continue
+        listing_url = urljoin(BASE_URL, href)
 
-                if "/s-anzeige/" not in href:
-                    continue
+        if listing_url in bekannte_links:
+            continue
 
-                listing_url = urljoin(
-                    BASE_URL,
-                    href,
-                )
+        bekannte_links.add(listing_url)
+        anzeige_links.append(listing_url)
 
-                if listing_url in bekannte_links:
-                    continue
+        print("Gefundener Link:", listing_url)
 
-                bekannte_links.add(listing_url)
-                anzeige_links.append(listing_url)
-
-                print(
-                    "Gefundener Link:",
-                    listing_url,
-                )
-
-                if len(anzeige_links) >= max_results:
-                    break
-
-        finally:
-            browser.close()
+        if len(anzeige_links) >= max_results:
+            break
 
     print(
         "\nAnzeigen auf Suchseite:",
