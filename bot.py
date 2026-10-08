@@ -128,7 +128,7 @@ async def radius_received(
             search_listings,
             postcode=postcode,
             radius=radius,
-            max_results=10,
+            max_results=100,
         )
 
     except Exception as error:
