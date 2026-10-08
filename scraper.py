@@ -1,9 +1,9 @@
 
 import re
 import time
-from dataclasses import dataclass
+from models import Listing
 from urllib.parse import urljoin
-
+from analyzer import calculate_price_per_sqm
 import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
@@ -18,19 +18,6 @@ HEADERS = {
         "Chrome/140.0 Safari/537.36"
     )
 }
-
-
-@dataclass
-class Listing:
-    title: str
-    price: int | None
-    area: float | None
-    rooms: int | None
-    house_fee: float | None
-    price_per_sqm: float | None
-    location: str
-    url: str
-
 
 def parse_number(text: str) -> float | None:
     if not text:
@@ -48,17 +35,6 @@ def parse_number(text: str) -> float | None:
         return float(value)
     except ValueError:
         return None
-
-
-def calculate_price_per_sqm(
-    price: float | None,
-    area: float | None,
-) -> float | None:
-    if price is None or area is None or area <= 0:
-        return None
-
-    return round(price / area, 2)
-
 
 def find_location_id(
     postcode: str,
